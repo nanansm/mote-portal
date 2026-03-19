@@ -130,6 +130,9 @@ importers:
       drizzle-orm:
         specifier: ^0.29.3
         version: 0.29.5(@types/react@18.3.28)(mysql2@3.20.0(@types/node@20.19.37))(react@18.3.1)
+      esbuild:
+        specifier: ^0.19.11
+        version: 0.19.12
       express:
         specifier: ^4.18.2
         version: 4.22.1
@@ -161,9 +164,6 @@ importers:
       '@types/node':
         specifier: ^20.11.0
         version: 20.19.37
-      esbuild:
-        specifier: ^0.19.11
-        version: 0.19.12
       tsx:
         specifier: ^4.7.0
         version: 4.21.0

@@ -2,6 +2,7 @@
   "name": "mote-portal",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "build": "pnpm run build:server && pnpm run build:client",
     "build:server": "pnpm --filter server build",
