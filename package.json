@@ -1,0 +1,23 @@
+{
+  "name": "mote-portal",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm run build:server && pnpm run build:client",
+    "build:server": "pnpm --filter server build",
+    "build:client": "pnpm --filter client build && node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('dist/public',{recursive:true});cpSync('client/dist','dist/public',{recursive:true});\"",
+    "start": "node dist/index.js",
+    "dev": "concurrently \"pnpm --filter server dev\" \"pnpm --filter client dev\"",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.3.1",
+    "drizzle-kit": "^0.20.14"
+  },
+  "dependencies": {
+    "mysql2": "^3.20.0"
+  }
+}
