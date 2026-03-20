@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { nanoid } from "nanoid";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { getGoogleAuthUrl, getGoogleProfile, signJwt } from "../_core/auth";
 import { getDb, schema } from "../_core/db";
 import { ENV } from "../_core/env";
@@ -57,6 +57,19 @@ router.get("/google/callback", async (req, res) => {
         .where(eq(schema.users.id, user.id));
     }
 
+    // Link client record to this user if contactEmail matches and userId is not yet set
+    if (user.role !== "admin") {
+      await db
+        .update(schema.clients)
+        .set({ userId: user.id })
+        .where(
+          and(
+            eq(schema.clients.contactEmail, user.email),
+            isNull(schema.clients.userId)
+          )
+        );
+    }
+
     const token = await signJwt({
       userId: user.id,
       email: user.email,
@@ -69,6 +82,22 @@ router.get("/google/callback", async (req, res) => {
       sameSite: ENV.isProduction ? "strict" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
+
+    // Check if client user has an associated client profile
+    if (user.role === "client") {
+      const clientProfile = await db
+        .select({ id: schema.clients.id })
+        .from(schema.clients)
+        .where(eq(schema.clients.userId, user.id))
+        .limit(1);
+
+      if (!clientProfile[0]) {
+        // No client profile found — redirect with access error
+        const errorUrl = ENV.isProduction ? "/login?error=noaccess" : "http://localhost:5173/login?error=noaccess";
+        res.redirect(errorUrl);
+        return;
+      }
+    }
 
     const redirectUrl = ENV.isProduction ? "/" : "http://localhost:5173/";
     res.redirect(redirectUrl);

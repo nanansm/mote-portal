@@ -100,7 +100,12 @@ export function LoginPage() {
             Continue with Google
           </button>
 
-          {window.location.search.includes("error=oauth") && (
+          {window.location.search.includes("error=noaccess") && (
+            <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-400">
+              Access restricted. Contact your account manager.
+            </div>
+          )}
+          {window.location.search.includes("error=oauth") && !window.location.search.includes("error=noaccess") && (
             <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-400">
               Authentication failed. Please try again.
             </div>

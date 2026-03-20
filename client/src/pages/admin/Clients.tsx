@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { EmptyState } from "@/components/shared/EmptyState";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { Plus, ExternalLink, Pencil, Building2, Search } from "lucide-react";
-import { formatDate } from "@/lib/utils";
 
 interface Client {
   id: string;
@@ -19,21 +18,13 @@ interface Client {
   contactEmail: string | null;
   contactPhone: string | null;
   isActive: boolean;
-  userId: string;
-  userName: string;
-  userEmail: string;
+  userId: string | null;
+  userName: string | null;
+  userEmail: string | null;
   createdAt: string;
 }
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-}
-
 const emptyForm = {
-  userId: "",
   brandName: "",
   industry: "",
   website: "",
@@ -52,10 +43,6 @@ export function AdminClients() {
   const { data, isLoading } = useQuery<{ data: Client[] }>({
     queryKey: ["admin", "clients"],
     queryFn: () => api.get("/api/admin/clients"),
-  });
-  const { data: usersData } = useQuery<{ data: User[] }>({
-    queryKey: ["admin", "users"],
-    queryFn: () => api.get("/api/admin/users"),
   });
 
   const createMutation = useMutation({
@@ -81,7 +68,6 @@ export function AdminClients() {
     c.brandName.toLowerCase().includes(search.toLowerCase()) ||
     (c.contactEmail || "").toLowerCase().includes(search.toLowerCase())
   );
-  const clientUsers = (usersData?.data || []).filter((u) => u.role === "client");
 
   function openCreate() {
     setEditing(null);
@@ -92,7 +78,6 @@ export function AdminClients() {
   function openEdit(c: Client) {
     setEditing(c);
     setForm({
-      userId: c.userId,
       brandName: c.brandName,
       industry: c.industry || "",
       website: c.website || "",
@@ -162,9 +147,11 @@ export function AdminClients() {
               </div>
 
               <div className="space-y-1.5 flex-1 text-sm">
-                <p className="text-cream/50">
-                  <span className="text-cream/30">User:</span> {client.userName}
-                </p>
+                {client.userName && (
+                  <p className="text-cream/50">
+                    <span className="text-cream/30">User:</span> {client.userName}
+                  </p>
+                )}
                 {client.contactEmail && (
                   <p className="text-cream/50 truncate">{client.contactEmail}</p>
                 )}
@@ -199,21 +186,6 @@ export function AdminClients() {
             <DialogTitle>{editing ? "Edit Client" : "Add New Client"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {!editing && (
-              <div className="space-y-1.5">
-                <Label>User Account</Label>
-                <select
-                  className="flex h-10 w-full rounded-xl border border-yellow/20 bg-navy px-4 py-2 text-sm text-cream focus:outline-none focus:border-yellow"
-                  value={form.userId}
-                  onChange={(e) => setForm({ ...form, userId: e.target.value })}
-                >
-                  <option value="">Select user...</option>
-                  {clientUsers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                  ))}
-                </select>
-              </div>
-            )}
             <div className="space-y-1.5">
               <Label>Brand Name *</Label>
               <Input

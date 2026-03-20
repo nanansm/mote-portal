@@ -26,7 +26,7 @@ export const users = mysqlTable("users", {
 
 export const clients = mysqlTable("clients", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id),
   brandName: varchar("brand_name", { length: 255 }).notNull(),
   industry: varchar("industry", { length: 255 }),
   logoUrl: varchar("logo_url", { length: 500 }),
@@ -92,6 +92,7 @@ export const apiCredentials = mysqlTable("api_credentials", {
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   accountId: varchar("account_id", { length: 255 }),
+  igAccountId: varchar("ig_account_id", { length: 255 }),
   tokenExpiresAt: timestamp("token_expires_at"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

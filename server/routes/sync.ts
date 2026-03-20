@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAdmin } from "../_core/middleware";
-import { syncMeta } from "../services/meta";
+import { syncMeta, syncInstagram } from "../services/meta";
 import { syncGoogle } from "../services/google";
 import { syncTiktok } from "../services/tiktok";
 import { syncSheets } from "../services/sheets";
@@ -32,6 +32,16 @@ router.post("/tiktok/:clientId", async (req, res) => {
   try {
     await syncTiktok(req.params.clientId);
     res.json({ success: true, message: "TikTok sync completed" });
+  } catch (err: any) {
+    console.error(err);
+    res.status(500).json({ error: err.message || "Sync failed" });
+  }
+});
+
+router.post("/instagram/:clientId", async (req, res) => {
+  try {
+    await syncInstagram(req.params.clientId);
+    res.json({ success: true, message: "Instagram sync completed" });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: err.message || "Sync failed" });

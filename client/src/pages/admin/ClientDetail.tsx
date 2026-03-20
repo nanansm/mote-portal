@@ -113,9 +113,16 @@ export function AdminClientDetail() {
     },
   });
 
+  // Metrics date range
+  const [metricsDays, setMetricsDays] = useState(30);
+  const { data: dashData } = useQuery<{ data: any }>({
+    queryKey: ["admin", "client-dashboard", id, metricsDays],
+    queryFn: () => api.get(`/api/admin/clients/${id}/dashboard?days=${metricsDays}`),
+  });
+
   // API Cred form
   const [credOpen, setCredOpen] = useState(false);
-  const [credForm, setCredForm] = useState({ platform: "meta", accessToken: "", refreshToken: "", accountId: "" });
+  const [credForm, setCredForm] = useState({ platform: "meta", accessToken: "", refreshToken: "", accountId: "", igAccountId: "" });
   const createCredMutation = useMutation({
     mutationFn: (b: typeof credForm) => api.post(`/api/admin/credentials/${id}`, b),
     onSuccess: () => {
@@ -238,19 +245,73 @@ export function AdminClientDetail() {
 
         {/* Metrics */}
         <TabsContent value="metrics">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Manual Metrics Entry</CardTitle>
-              <Button size="sm" className="gap-1.5" onClick={() => setMetOpen(true)}>
-                <Plus className="h-3.5 w-3.5" />Add Metrics
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-cream/50 text-sm">
-                Select a campaign and enter daily metrics manually. For automatic sync use the Sync tab.
-              </p>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-base">Performance Summary</CardTitle>
+                <div className="flex items-center gap-1 rounded-xl border border-yellow/20 bg-navy p-1">
+                  {([7, 30, 90] as const).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setMetricsDays(d)}
+                      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${metricsDays === d ? "bg-yellow text-green-dark font-semibold" : "text-cream/60 hover:text-cream hover:bg-yellow/10"}`}
+                    >
+                      {d} days
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {dashData?.data ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Total Spend</p>
+                      <p className="text-lg font-bold text-yellow">{formatIDR(dashData.data.summary.totalSpend)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Impressions</p>
+                      <p className="text-lg font-bold text-cream">{formatNumber(dashData.data.summary.totalImpressions)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Clicks</p>
+                      <p className="text-lg font-bold text-cream">{formatNumber(dashData.data.summary.totalClicks)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Conversions</p>
+                      <p className="text-lg font-bold text-cream">{formatNumber(dashData.data.summary.totalConversions)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Reach</p>
+                      <p className="text-lg font-bold text-cream">{formatNumber(dashData.data.summary.totalReach)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Engagements</p>
+                      <p className="text-lg font-bold text-cream">{formatNumber(dashData.data.summary.totalEngagements)}</p>
+                    </div>
+                    <div className="rounded-xl border border-yellow/15 bg-navy/40 p-4">
+                      <p className="text-xs text-cream/50 mb-1">Overall ROAS</p>
+                      <p className="text-lg font-bold text-yellow">{dashData.data.summary.overallROAS.toFixed(2)}x</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-cream/40 text-sm text-center py-4">Loading metrics...</p>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base">Manual Metrics Entry</CardTitle>
+                <Button size="sm" className="gap-1.5" onClick={() => setMetOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />Add Metrics
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <p className="text-cream/50 text-sm">
+                  Select a campaign and enter daily metrics manually. For automatic sync use the Sync tab.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* KOL */}
@@ -331,6 +392,9 @@ export function AdminClientDetail() {
                       </span>
                       <div>
                         <p className="text-sm text-cream">Account ID: {c.accountId || "—"}</p>
+                        {c.igAccountId && (
+                          <p className="text-xs text-cream/60">IG Account: {c.igAccountId}</p>
+                        )}
                         <p className="text-xs text-cream/40">
                           Token: {c.accessToken ? `${c.accessToken.slice(0, 12)}...` : "—"}
                         </p>
@@ -407,6 +471,7 @@ export function AdminClientDetail() {
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
                   { key: "meta", label: "Meta Ads", color: "bg-blue-500/10 border-blue-500/30 text-blue-300 hover:bg-blue-500/20" },
+                  { key: "instagram", label: "Instagram Organic", color: "bg-purple-500/10 border-purple-500/30 text-purple-300 hover:bg-purple-500/20" },
                   { key: "google", label: "Google Ads", color: "bg-red-500/10 border-red-500/30 text-red-300 hover:bg-red-500/20" },
                   { key: "tiktok", label: "TikTok Ads", color: "bg-pink-500/10 border-pink-500/30 text-pink-300 hover:bg-pink-500/20" },
                   { key: "sheets", label: "Google Sheets", color: "bg-green-500/10 border-green-500/30 text-green-300 hover:bg-green-500/20" },
@@ -575,9 +640,15 @@ export function AdminClientDetail() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Account ID</Label>
-              <Input value={credForm.accountId} onChange={(e) => setCredForm({ ...credForm, accountId: e.target.value })} />
+              <Label>Account ID {credForm.platform === "meta" ? "(Meta Ads Account ID)" : ""}</Label>
+              <Input value={credForm.accountId} onChange={(e) => setCredForm({ ...credForm, accountId: e.target.value })} placeholder={credForm.platform === "meta" ? "e.g. act_123456789" : ""} />
             </div>
+            {credForm.platform === "meta" && (
+              <div className="space-y-1.5">
+                <Label>Instagram Business Account ID</Label>
+                <Input value={credForm.igAccountId} onChange={(e) => setCredForm({ ...credForm, igAccountId: e.target.value })} placeholder="e.g. 17841400455970027" />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Access Token</Label>
               <Input value={credForm.accessToken} onChange={(e) => setCredForm({ ...credForm, accessToken: e.target.value })} />

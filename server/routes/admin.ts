@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { requireAdmin } from "../_core/middleware";
 import { getDb, schema } from "../_core/db";
@@ -41,14 +41,14 @@ router.post("/clients", async (req, res) => {
   try {
     const db = getDb();
     const { userId, brandName, industry, logoUrl, website, contactEmail, contactPhone, notes } = req.body;
-    if (!userId || !brandName) {
-      res.status(400).json({ error: "userId and brandName are required" });
+    if (!brandName) {
+      res.status(400).json({ error: "brandName is required" });
       return;
     }
     const id = nanoid();
     await db.insert(schema.clients).values({
       id,
-      userId,
+      userId: userId || null,
       brandName,
       industry,
       logoUrl,
@@ -105,6 +105,69 @@ router.delete("/clients/:id", async (req, res) => {
     const db = getDb();
     await db.delete(schema.clients).where(eq(schema.clients.id, req.params.id));
     res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/clients/:id/dashboard", async (req, res) => {
+  try {
+    const db = getDb();
+    const days = Math.min(Math.max(parseInt(req.query.days as string || "30"), 1), 365);
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startDateStr = startDate.toISOString().split("T")[0];
+
+    const campaigns = await db
+      .select()
+      .from(schema.campaigns)
+      .where(eq(schema.campaigns.clientId, req.params.id));
+
+    let totalSpend = 0, totalImpressions = 0, totalReach = 0, totalClicks = 0;
+    let totalConversions = 0, totalRevenue = 0, totalEngagements = 0;
+    const dailySpendMap: Record<string, number> = {};
+
+    for (const campaign of campaigns) {
+      const metrics = await db
+        .select()
+        .from(schema.campaignMetrics)
+        .where(
+          and(
+            eq(schema.campaignMetrics.campaignId, campaign.id),
+            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
+          )
+        );
+      for (const m of metrics) {
+        const spend = parseFloat(String(m.spend || 0));
+        totalSpend += spend;
+        totalImpressions += m.impressions || 0;
+        totalReach += m.reach || 0;
+        totalClicks += m.clicks || 0;
+        totalConversions += m.conversions || 0;
+        totalRevenue += parseFloat(String(m.revenue || 0));
+        totalEngagements += m.engagements || 0;
+        const dateStr = String(m.date).split("T")[0];
+        dailySpendMap[dateStr] = (dailySpendMap[dateStr] || 0) + spend;
+      }
+    }
+
+    const dailySpend = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      dailySpend.push({ date: dateStr, spend: dailySpendMap[dateStr] || 0 });
+    }
+
+    const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+    res.json({
+      data: {
+        summary: { totalSpend, totalImpressions, totalReach, totalClicks, totalConversions, overallROAS, totalEngagements },
+        dailySpend,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -322,7 +385,7 @@ router.get("/credentials/:clientId", async (req, res) => {
 router.post("/credentials/:clientId", async (req, res) => {
   try {
     const db = getDb();
-    const { platform, accessToken, refreshToken, accountId, tokenExpiresAt } = req.body;
+    const { platform, accessToken, refreshToken, accountId, igAccountId, tokenExpiresAt } = req.body;
     const id = nanoid();
     await db.insert(schema.apiCredentials).values({
       id,
@@ -331,6 +394,7 @@ router.post("/credentials/:clientId", async (req, res) => {
       accessToken,
       refreshToken,
       accountId,
+      igAccountId,
       tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : undefined,
     });
     const created = await db.select().from(schema.apiCredentials).where(eq(schema.apiCredentials.id, id)).limit(1);
@@ -344,10 +408,10 @@ router.post("/credentials/:clientId", async (req, res) => {
 router.put("/credentials/:id", async (req, res) => {
   try {
     const db = getDb();
-    const { accessToken, refreshToken, accountId, tokenExpiresAt, isActive } = req.body;
+    const { accessToken, refreshToken, accountId, igAccountId, tokenExpiresAt, isActive } = req.body;
     await db
       .update(schema.apiCredentials)
-      .set({ accessToken, refreshToken, accountId, tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : undefined, isActive })
+      .set({ accessToken, refreshToken, accountId, igAccountId, tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : undefined, isActive })
       .where(eq(schema.apiCredentials.id, req.params.id));
     const updated = await db.select().from(schema.apiCredentials).where(eq(schema.apiCredentials.id, req.params.id)).limit(1);
     res.json({ data: updated[0] });

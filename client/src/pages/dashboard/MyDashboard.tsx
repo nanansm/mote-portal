@@ -37,7 +37,8 @@ type DateRange = "7d" | "30d" | "90d";
 export function MyDashboard() {
   const { user } = useAuth();
   const [range, setRange] = useState<DateRange>("30d");
-  const { data, isLoading, error } = useDashboard();
+  const daysMap: Record<DateRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
+  const { data, isLoading, error } = useDashboard(daysMap[range]);
 
   const { data: profileData } = useQuery<{ data: any }>({
     queryKey: ["client", "profile"],
@@ -59,9 +60,6 @@ export function MyDashboard() {
   if (!d) return null;
 
   const brandName = profileData?.data?.brandName || user?.name?.split(" ")[0] || "there";
-
-  const daysMap: Record<DateRange, number> = { "7d": 7, "30d": 30, "90d": 90 };
-  const filteredDailySpend = d.dailySpend.slice(-daysMap[range]);
 
   const pieData = d.impressionsByPlatform.filter((p: any) => p.impressions && p.impressions > 0);
 
@@ -108,7 +106,7 @@ export function MyDashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={filteredDailySpend} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+              <AreaChart data={d.dailySpend} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
                 <defs>
                   <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#F4D23A" stopOpacity={0.25} />

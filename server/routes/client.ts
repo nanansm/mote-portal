@@ -26,16 +26,18 @@ router.get("/dashboard", async (req, res) => {
       return;
     }
 
+    const days = Math.min(Math.max(parseInt(req.query.days as string || "30"), 1), 365);
+
     // Get all campaigns for this client
     const campaigns = await db
       .select()
       .from(schema.campaigns)
       .where(eq(schema.campaigns.clientId, clientId));
 
-    // Last 30 days metrics
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+    // Date range based on `days` param
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startDateStr = startDate.toISOString().split("T")[0];
 
     // Aggregate metrics across all campaigns
     let totalSpend = 0;
@@ -59,7 +61,7 @@ router.get("/dashboard", async (req, res) => {
         .where(
           and(
             eq(schema.campaignMetrics.campaignId, campaign.id),
-            gte(schema.campaignMetrics.date, thirtyDaysAgoStr as unknown as Date)
+            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
           )
         );
 
@@ -119,9 +121,9 @@ router.get("/dashboard", async (req, res) => {
       });
     }
 
-    // Daily spend array for last 30 days
+    // Daily spend array for the selected date range
     const dailySpend = [];
-    for (let i = 29; i >= 0; i--) {
+    for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
@@ -143,7 +145,12 @@ router.get("/dashboard", async (req, res) => {
       const metricsRows = await db
         .select({ conversions: schema.campaignMetrics.conversions })
         .from(schema.campaignMetrics)
-        .where(eq(schema.campaignMetrics.campaignId, c.id));
+        .where(
+          and(
+            eq(schema.campaignMetrics.campaignId, c.id),
+            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
+          )
+        );
       whatsappLeads += metricsRows.reduce((sum, m) => sum + (m.conversions || 0), 0);
     }
 
