@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../_core/middleware";
 import { getDb, schema } from "../_core/db";
 
@@ -17,6 +17,27 @@ async function getClientId(userId: string): Promise<string | null> {
   return rows[0]?.id ?? null;
 }
 
+/** Parse date params, defaulting to current calendar month */
+function parseDateRange(query: Record<string, any>): { startDate: string; endDate: string; label: string } {
+  if (query.startDate && query.endDate) {
+    const start = query.startDate as string;
+    const end = query.endDate as string;
+    const startLabel = new Date(start).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const endLabel = new Date(end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return { startDate: start, endDate: end, label: `${startLabel} – ${endLabel}` };
+  }
+  // Default: current month
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const label = firstDay.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return {
+    startDate: firstDay.toISOString().split("T")[0],
+    endDate: lastDay.toISOString().split("T")[0],
+    label,
+  };
+}
+
 router.get("/dashboard", async (req, res) => {
   try {
     const db = getDb();
@@ -26,7 +47,7 @@ router.get("/dashboard", async (req, res) => {
       return;
     }
 
-    const days = Math.min(Math.max(parseInt(req.query.days as string || "30"), 1), 365);
+    const { startDate, endDate, label } = parseDateRange(req.query as Record<string, any>);
 
     // Get all campaigns for this client
     const campaigns = await db
@@ -34,25 +55,17 @@ router.get("/dashboard", async (req, res) => {
       .from(schema.campaigns)
       .where(eq(schema.campaigns.clientId, clientId));
 
-    // Date range based on `days` param
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const startDateStr = startDate.toISOString().split("T")[0];
-
-    // Aggregate metrics across all campaigns
-    let totalSpend = 0;
-    let totalImpressions = 0;
-    let totalReach = 0;
-    let totalClicks = 0;
-    let totalConversions = 0;
-    let totalRevenue = 0;
-    let totalEngagements = 0;
-
+    // Aggregate metrics per platform
+    const metaSpend: number[] = [];
+    const kolSpend: number[] = [];
+    const totalImpressions: Record<string, number> = {};
+    const totalReach: Record<string, number> = {};
+    const totalEngagements: Record<string, number> = {};
+    const totalClicks: Record<string, number> = {};
+    const totalFollowers: Record<string, number> = {};
     const dailySpendMap: Record<string, number> = {};
-    const impressionsByPlatform: Record<string, number> = {};
-    const budgetByPlatform: Record<string, number> = {};
 
-    const campaignSummaries = [];
+    const campaignSummaries: any[] = [];
 
     for (const campaign of campaigns) {
       const metrics = await db
@@ -61,49 +74,40 @@ router.get("/dashboard", async (req, res) => {
         .where(
           and(
             eq(schema.campaignMetrics.campaignId, campaign.id),
-            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
+            gte(schema.campaignMetrics.date, startDate as unknown as Date),
+            lte(schema.campaignMetrics.date, endDate as unknown as Date)
           )
         );
 
-      let camSpend = 0;
-      let camImpressions = 0;
-      let camClicks = 0;
-      let camConversions = 0;
-      let camRevenue = 0;
+      let camSpend = 0, camImpressions = 0, camClicks = 0, camConversions = 0, camRevenue = 0;
 
       for (const m of metrics) {
         const spend = parseFloat(String(m.spend || 0));
         const impressions = m.impressions || 0;
-        const clicks = m.clicks || 0;
-        const conversions = m.conversions || 0;
-        const revenue = parseFloat(String(m.revenue || 0));
         const reach = m.reach || 0;
+        const clicks = m.clicks || 0;
         const engagements = m.engagements || 0;
-
-        totalSpend += spend;
-        totalImpressions += impressions;
-        totalReach += reach;
-        totalClicks += clicks;
-        totalConversions += conversions;
-        totalRevenue += revenue;
-        totalEngagements += engagements;
+        const followers = m.followers || 0;
+        const revenue = parseFloat(String(m.revenue || 0));
 
         camSpend += spend;
         camImpressions += impressions;
         camClicks += clicks;
-        camConversions += conversions;
+        camConversions += m.conversions || 0;
         camRevenue += revenue;
+
+        totalImpressions[campaign.platform] = (totalImpressions[campaign.platform] || 0) + impressions;
+        totalReach[campaign.platform] = (totalReach[campaign.platform] || 0) + reach;
+        totalEngagements[campaign.platform] = (totalEngagements[campaign.platform] || 0) + engagements;
+        totalClicks[campaign.platform] = (totalClicks[campaign.platform] || 0) + clicks;
+        totalFollowers[campaign.platform] = (totalFollowers[campaign.platform] || 0) + followers;
 
         const dateStr = String(m.date).split("T")[0];
         dailySpendMap[dateStr] = (dailySpendMap[dateStr] || 0) + spend;
 
-        impressionsByPlatform[campaign.platform] =
-          (impressionsByPlatform[campaign.platform] || 0) + impressions;
+        if (campaign.platform === "kol") kolSpend.push(spend);
+        else metaSpend.push(spend);
       }
-
-      budgetByPlatform[campaign.platform] =
-        (budgetByPlatform[campaign.platform] || 0) +
-        parseFloat(String(campaign.budget || 0));
 
       const ctr = camImpressions > 0 ? (camClicks / camImpressions) * 100 : 0;
       const roas = camSpend > 0 ? camRevenue / camSpend : 0;
@@ -121,11 +125,53 @@ router.get("/dashboard", async (req, res) => {
       });
     }
 
-    // Daily spend array for the selected date range
+    // Aggregate 11 dashboard metrics
+    const contentImpressionPlatforms = ["meta", "organic_instagram", "organic_tiktok", "kol"];
+    const contentImpression = contentImpressionPlatforms.reduce((s, p) => s + (totalImpressions[p] || 0), 0);
+    const audienceReach = contentImpressionPlatforms.reduce((s, p) => s + (totalReach[p] || 0), 0);
+    const postInteraction = contentImpressionPlatforms.reduce((s, p) => s + (totalEngagements[p] || 0), 0);
+    const clickLink = ["meta", "organic_instagram", "organic_tiktok"].reduce((s, p) => s + (totalClicks[p] || 0), 0);
+    const audienceFollow = ["organic_tiktok", "organic_instagram"].reduce((s, p) => s + (totalFollowers[p] || 0), 0);
+
+    const marketingSpent = Object.values(totalImpressions).length > 0
+      ? campaigns.reduce((sum, c) => {
+          // We'll sum from dailySpendMap for all platforms
+          return sum;
+        }, 0) + metaSpend.reduce((a, b) => a + b, 0) + kolSpend.reduce((a, b) => a + b, 0)
+      : 0;
+
+    // Actually calculate marketingSpent as sum of ALL spend from campaign_metrics in range
+    let totalMarketingSpent = 0;
+    for (const [, vals] of Object.entries(dailySpendMap)) {
+      totalMarketingSpent += vals;
+    }
+
+    // Fetch omset + whatsapp leads from client_daily_data
+    const dailyDataRows = await db
+      .select()
+      .from(schema.clientDailyData)
+      .where(
+        and(
+          eq(schema.clientDailyData.clientId, clientId),
+          gte(schema.clientDailyData.date, startDate),
+          lte(schema.clientDailyData.date, endDate)
+        )
+      );
+
+    const realOmset = dailyDataRows.reduce((sum, r) => sum + parseFloat(String(r.realOmset || 0)), 0);
+    const whatsappLeads = dailyDataRows.reduce((sum, r) => sum + (r.whatsappLeads || 0), 0);
+
+    // Calculated metrics
+    const marketingCostPercent = realOmset > 0 ? (totalMarketingSpent / realOmset) * 100 : 0;
+    const engagementRate = audienceReach > 0 ? (postInteraction / audienceReach) * 100 : 0;
+    const ctr = contentImpression > 0 ? (clickLink / contentImpression) * 100 : 0;
+
+    // Build daily spend array
+    const dayCount = Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const dailySpend = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < dayCount; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split("T")[0];
       dailySpend.push({ date: dateStr, spend: dailySpendMap[dateStr] || 0 });
     }
@@ -138,44 +184,33 @@ router.get("/dashboard", async (req, res) => {
       .orderBy(desc(schema.kolActivations.activationDate))
       .limit(10);
 
-    // WhatsApp leads (count campaigns with platform = whatsapp_lead)
-    const waLeadCampaigns = campaigns.filter((c) => c.platform === "whatsapp_lead");
-    let whatsappLeads = 0;
-    for (const c of waLeadCampaigns) {
-      const metricsRows = await db
-        .select({ conversions: schema.campaignMetrics.conversions })
-        .from(schema.campaignMetrics)
-        .where(
-          and(
-            eq(schema.campaignMetrics.campaignId, c.id),
-            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
-          )
-        );
-      whatsappLeads += metricsRows.reduce((sum, m) => sum + (m.conversions || 0), 0);
-    }
-
-    const overallROAS = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-
     res.json({
       data: {
-        summary: {
-          totalSpend,
-          totalImpressions,
-          totalReach,
-          totalClicks,
-          totalConversions,
-          overallROAS,
-          totalEngagements,
+        period: { startDate, endDate, label },
+        metrics: {
+          realOmset,
+          marketingSpent: totalMarketingSpent,
+          marketingCostPercent,
+          contentImpression,
+          audienceReach,
+          postInteraction,
+          engagementRate,
+          audienceFollow,
+          clickLink,
+          ctr,
+          whatsappLeads,
         },
-        dailySpend,
-        impressionsByPlatform: Object.entries(impressionsByPlatform).map(([platform, impressions]) => ({
-          platform,
-          impressions,
-        })),
-        budgetByPlatform: Object.entries(budgetByPlatform).map(([platform, budget]) => ({
-          platform,
-          budget,
-        })),
+        charts: {
+          dailySpend,
+          impressionsByPlatform: Object.entries(totalImpressions).map(([platform, impressions]) => ({
+            platform,
+            impressions,
+          })),
+          reachByPlatform: Object.entries(totalReach).map(([platform, reach]) => ({
+            platform,
+            reach,
+          })),
+        },
         campaigns: campaignSummaries,
         kolActivations: kolRows.map((k) => ({
           creatorName: k.creatorName,
@@ -184,7 +219,6 @@ router.get("/dashboard", async (req, res) => {
           engagements: k.engagements,
           contentUrl: k.contentUrl,
         })),
-        whatsappLeads,
       },
     });
   } catch (err) {

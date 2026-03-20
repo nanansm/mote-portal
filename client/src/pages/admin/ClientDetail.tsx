@@ -102,14 +102,26 @@ export function AdminClientDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "kol", id] }),
   });
 
-  // Sheet form
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetForm, setSheetForm] = useState({ sheetUrl: "", sheetName: "" });
-  const createSheetMutation = useMutation({
-    mutationFn: (b: typeof sheetForm) => api.post(`/api/admin/sheets/${id}`, b),
-    onSuccess: () => {
+  // Sheet form - single spreadsheet URL per client
+  const [sheetUrlInput, setSheetUrlInput] = useState("");
+  const [syncResult, setSyncResult] = useState<{ tiktokRows: number; omsetRows: number; kolRows: number; whatsappRows: number } | null>(null);
+
+  const saveSheetMutation = useMutation({
+    mutationFn: (url: string) => {
+      const existing = sheets[0];
+      if (existing) {
+        return api.put(`/api/admin/sheets/${existing.id}`, { sheetUrl: url, isActive: true });
+      }
+      return api.post(`/api/admin/sheets/${id}`, { sheetUrl: url, sheetName: "main" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "sheets", id] }),
+  });
+
+  const syncSheetsMutation = useMutation({
+    mutationFn: () => api.post<{ data: any }>(`/api/sync/sheets/${id}`, {}),
+    onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ["admin", "sheets", id] });
-      setSheetOpen(false);
+      if (res.data) setSyncResult(res.data);
     },
   });
 
@@ -183,7 +195,7 @@ export function AdminClientDetail() {
 
       {/* Tabs */}
       <Tabs defaultValue="campaigns">
-        <TabsList className="flex-wrap">
+        <TabsList className="flex-nowrap overflow-x-auto w-full scrollbar-hide">
           <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
           <TabsTrigger value="metrics">Metrics</TabsTrigger>
           <TabsTrigger value="kol">KOL</TabsTrigger>
@@ -424,36 +436,78 @@ export function AdminClientDetail() {
         {/* Sheets */}
         <TabsContent value="sheets">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Google Sheet Configs</CardTitle>
-              <Button size="sm" className="gap-1.5" onClick={() => setSheetOpen(true)}>
-                <Plus className="h-3.5 w-3.5" />Add Sheet
+            <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base">Google Spreadsheet</CardTitle>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={() => syncSheetsMutation.mutate()}
+                disabled={syncSheetsMutation.isPending || sheets.length === 0}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${syncSheetsMutation.isPending ? "animate-spin" : ""}`} />
+                Sync All Tabs
               </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Spreadsheet URL input */}
               <div className="space-y-2">
-                {sheets.map((s: any) => (
-                  <div key={s.id} className="rounded-xl border border-yellow/[0.12] bg-navy/40 px-4 py-3">
-                    <p className="font-medium text-cream text-sm">{s.sheetName || "Unnamed Sheet"}</p>
-                    <a
-                      href={s.sheetUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-yellow hover:underline truncate block mt-0.5"
-                    >
-                      {s.sheetUrl}
-                    </a>
-                    <p className="text-xs text-cream/40 mt-1">
-                      {s.lastSyncedAt
-                        ? `Last synced: ${new Date(s.lastSyncedAt).toLocaleString("id-ID")}`
-                        : "Never synced"}
-                    </p>
-                  </div>
-                ))}
-                {sheets.length === 0 && (
-                  <p className="text-center py-8 text-cream/40 text-sm">No sheets configured</p>
-                )}
+                <Label>Google Spreadsheet URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={sheetUrlInput || sheets[0]?.sheetUrl || ""}
+                    onChange={(e) => setSheetUrlInput(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveSheetMutation.mutate(sheetUrlInput || sheets[0]?.sheetUrl || "")}
+                    disabled={saveSheetMutation.isPending || !(sheetUrlInput || sheets[0]?.sheetUrl)}
+                  >
+                    Save
+                  </Button>
+                </div>
+                <p className="text-xs text-cream/40">
+                  The spreadsheet must have tabs: <code className="text-yellow">tiktok_organic</code>, <code className="text-yellow">omset</code>, <code className="text-yellow">kol</code>, <code className="text-yellow">whatsapp_lead</code>
+                </p>
               </div>
+
+              {/* Per-tab sync status */}
+              {sheets[0] && (
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: "tiktokSyncedAt", label: "TikTok Organic", tab: "tiktok_organic" },
+                    { key: "omsetSyncedAt", label: "Omset", tab: "omset" },
+                    { key: "kolSyncedAt", label: "KOL", tab: "kol" },
+                    { key: "whatsappSyncedAt", label: "WhatsApp Lead", tab: "whatsapp_lead" },
+                  ].map(({ key, label, tab }) => (
+                    <div key={key} className="rounded-xl border border-yellow/10 bg-navy/40 px-3 py-2.5">
+                      <p className="text-xs font-semibold text-cream">{label}</p>
+                      <p className="text-[10px] text-cream/40 mt-0.5 font-mono">{tab}</p>
+                      <p className="text-[10px] text-cream/50 mt-1">
+                        {(sheets[0] as any)[key]
+                          ? `Synced: ${new Date((sheets[0] as any)[key]).toLocaleString("id-ID")}`
+                          : "Not synced yet"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Sync result */}
+              {syncResult && (
+                <div className="rounded-xl border border-lime/20 bg-lime/5 p-3 text-xs text-cream/70 space-y-1">
+                  <p className="font-semibold text-lime">Last sync results:</p>
+                  <p>TikTok Organic: {syncResult.tiktokRows} rows</p>
+                  <p>Omset: {syncResult.omsetRows} rows</p>
+                  <p>KOL: {syncResult.kolRows} rows</p>
+                  <p>WhatsApp Lead: {syncResult.whatsappRows} rows</p>
+                </div>
+              )}
+
+              {syncSheetsMutation.isError && (
+                <p className="text-xs text-red-400">{(syncSheetsMutation.error as any)?.message || "Sync failed"}</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -665,33 +719,6 @@ export function AdminClientDetail() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Google Sheet</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label>Sheet URL</Label>
-              <Input
-                value={sheetForm.sheetUrl}
-                onChange={(e) => setSheetForm({ ...sheetForm, sheetUrl: e.target.value })}
-                placeholder="https://docs.google.com/spreadsheets/..."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Tab Name</Label>
-              <Input
-                value={sheetForm.sheetName}
-                onChange={(e) => setSheetForm({ ...sheetForm, sheetName: e.target.value })}
-                placeholder="Sheet1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSheetOpen(false)}>Cancel</Button>
-            <Button onClick={() => createSheetMutation.mutate(sheetForm)} disabled={createSheetMutation.isPending}>Add</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

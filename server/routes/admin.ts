@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { requireAdmin } from "../_core/middleware";
 import { getDb, schema } from "../_core/db";
@@ -114,10 +114,20 @@ router.delete("/clients/:id", async (req, res) => {
 router.get("/clients/:id/dashboard", async (req, res) => {
   try {
     const db = getDb();
-    const days = Math.min(Math.max(parseInt(req.query.days as string || "30"), 1), 365);
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const startDateStr = startDate.toISOString().split("T")[0];
+
+    // Support both days and startDate/endDate params
+    let startDateStr: string;
+    let endDateStr: string;
+    if (req.query.startDate && req.query.endDate) {
+      startDateStr = req.query.startDate as string;
+      endDateStr = req.query.endDate as string;
+    } else {
+      const days = Math.min(Math.max(parseInt(req.query.days as string || "30"), 1), 365);
+      const sd = new Date();
+      sd.setDate(sd.getDate() - days);
+      startDateStr = sd.toISOString().split("T")[0];
+      endDateStr = new Date().toISOString().split("T")[0];
+    }
 
     const campaigns = await db
       .select()
@@ -135,7 +145,8 @@ router.get("/clients/:id/dashboard", async (req, res) => {
         .where(
           and(
             eq(schema.campaignMetrics.campaignId, campaign.id),
-            gte(schema.campaignMetrics.date, startDateStr as unknown as Date)
+            gte(schema.campaignMetrics.date, startDateStr as unknown as Date),
+            lte(schema.campaignMetrics.date, endDateStr as unknown as Date)
           )
         );
       for (const m of metrics) {
@@ -152,10 +163,11 @@ router.get("/clients/:id/dashboard", async (req, res) => {
       }
     }
 
+    const dayCount = Math.round((new Date(endDateStr).getTime() - new Date(startDateStr).getTime()) / (1000 * 60 * 60 * 24)) + 1;
     const dailySpend = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < dayCount; i++) {
+      const d = new Date(startDateStr);
+      d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split("T")[0];
       dailySpend.push({ date: dateStr, spend: dailySpendMap[dateStr] || 0 });
     }
@@ -386,19 +398,45 @@ router.post("/credentials/:clientId", async (req, res) => {
   try {
     const db = getDb();
     const { platform, accessToken, refreshToken, accountId, igAccountId, tokenExpiresAt } = req.body;
-    const id = nanoid();
-    await db.insert(schema.apiCredentials).values({
-      id,
-      clientId: req.params.clientId,
-      platform,
-      accessToken,
-      refreshToken,
-      accountId,
-      igAccountId,
-      tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : undefined,
-    });
-    const created = await db.select().from(schema.apiCredentials).where(eq(schema.apiCredentials.id, id)).limit(1);
-    res.status(201).json({ data: created[0] });
+
+    // Upsert: check if credential already exists for this clientId + platform
+    const existing = await db
+      .select()
+      .from(schema.apiCredentials)
+      .where(
+        and(
+          eq(schema.apiCredentials.clientId, req.params.clientId),
+          eq(schema.apiCredentials.platform, platform)
+        )
+      )
+      .limit(1);
+
+    let resultId: string;
+    if (existing[0]) {
+      // Update existing credential
+      resultId = existing[0].id;
+      const updateData: any = { accountId, igAccountId, isActive: true };
+      if (accessToken) updateData.accessToken = accessToken;
+      if (refreshToken) updateData.refreshToken = refreshToken;
+      if (tokenExpiresAt) updateData.tokenExpiresAt = new Date(tokenExpiresAt);
+      await db.update(schema.apiCredentials).set(updateData).where(eq(schema.apiCredentials.id, resultId));
+    } else {
+      // Insert new credential
+      resultId = nanoid();
+      await db.insert(schema.apiCredentials).values({
+        id: resultId,
+        clientId: req.params.clientId,
+        platform,
+        accessToken,
+        refreshToken,
+        accountId,
+        igAccountId,
+        tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : undefined,
+      });
+    }
+
+    const result = await db.select().from(schema.apiCredentials).where(eq(schema.apiCredentials.id, resultId)).limit(1);
+    res.status(200).json({ data: result[0] });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });

@@ -97,36 +97,67 @@ export async function syncMeta(clientId: string): Promise<void> {
     for (const insight of insightsData.data || []) {
       const actions: any[] = insight.actions || [];
 
-      // Fix 3: engagements = post_engagement action
+      // engagements = post_engagement action
       const engagements = actions
         .filter((a: any) => a.action_type === "post_engagement")
         .reduce((sum: number, a: any) => sum + parseInt(a.value || "0"), 0);
 
-      // Fix 4: conversions = sum of ALL action values (total results)
+      // conversions = sum of ALL action values (total results)
       const conversions = actions
         .reduce((sum: number, a: any) => sum + parseInt(a.value || "0"), 0);
 
       const spend = parseFloat(insight.spend || "0");
       const revenue = conversions * spend * 3; // placeholder ROAS estimate
 
-      const metricId = nanoid();
-      await db.insert(schema.campaignMetrics).values({
-        id: metricId,
-        campaignId,
-        date: insight.date_start,
-        impressions: parseInt(insight.impressions || "0"),
-        reach: parseInt(insight.reach || "0"),
-        clicks: parseInt(insight.clicks || "0"),
-        engagements,
-        conversions,
-        spend: insight.spend || "0",
-        ctr: insight.ctr || "0",
-        cpc: insight.cpc || "0",
-        cpm: insight.cpm || "0",
-        revenue: String(revenue),
-        source: "api",
-        rawData: insight,
-      });
+      const date = insight.date_start;
+      const existingMetric = await db
+        .select({ id: schema.campaignMetrics.id })
+        .from(schema.campaignMetrics)
+        .where(
+          and(
+            eq(schema.campaignMetrics.campaignId, campaignId),
+            eq(schema.campaignMetrics.date, date as unknown as Date)
+          )
+        )
+        .limit(1);
+
+      if (existingMetric[0]) {
+        await db
+          .update(schema.campaignMetrics)
+          .set({
+            impressions: parseInt(insight.impressions || "0"),
+            reach: parseInt(insight.reach || "0"),
+            clicks: parseInt(insight.clicks || "0"),
+            engagements,
+            conversions,
+            spend: insight.spend || "0",
+            ctr: insight.ctr || "0",
+            cpc: insight.cpc || "0",
+            cpm: insight.cpm || "0",
+            revenue: String(revenue),
+            source: "api",
+            rawData: insight,
+          })
+          .where(eq(schema.campaignMetrics.id, existingMetric[0].id));
+      } else {
+        await db.insert(schema.campaignMetrics).values({
+          id: nanoid(),
+          campaignId,
+          date,
+          impressions: parseInt(insight.impressions || "0"),
+          reach: parseInt(insight.reach || "0"),
+          clicks: parseInt(insight.clicks || "0"),
+          engagements,
+          conversions,
+          spend: insight.spend || "0",
+          ctr: insight.ctr || "0",
+          cpc: insight.cpc || "0",
+          cpm: insight.cpm || "0",
+          revenue: String(revenue),
+          source: "api",
+          rawData: insight,
+        });
+      }
     }
   }
 }

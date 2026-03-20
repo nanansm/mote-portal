@@ -50,8 +50,8 @@ router.post("/instagram/:clientId", async (req, res) => {
 
 router.post("/sheets/:clientId", async (req, res) => {
   try {
-    await syncSheets(req.params.clientId);
-    res.json({ success: true, message: "Google Sheets sync completed" });
+    const result = await syncSheets(req.params.clientId);
+    res.json({ success: true, message: "Google Sheets sync completed", data: result });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: err.message || "Sync failed" });

@@ -15,16 +15,16 @@ export function AdminSidebar() {
   const { user, logout } = useAuth();
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col bg-[#113B2A]">
+    <aside className="fixed inset-y-0 left-0 z-20 hidden md:flex flex-col bg-[#113B2A] w-16 lg:w-60 transition-all duration-200">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 px-5 border-b border-yellow/10">
+      <div className="flex h-16 items-center justify-center lg:justify-start gap-2 px-0 lg:px-5 border-b border-yellow/10">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow shrink-0">
             <svg viewBox="0 0 24 24" className="h-5 w-5 fill-green-dark">
               <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
             </svg>
           </div>
-          <div>
+          <div className="hidden lg:block">
             <span className="text-yellow font-bold text-sm tracking-tight">mote kreatif</span>
             <span className="text-lime">.</span>
             <p className="text-cream/40 text-[10px] -mt-0.5">Admin Panel</p>
@@ -33,15 +33,16 @@ export function AdminSidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-0.5 p-3 pt-4 overflow-y-auto">
+      <nav className="flex-1 space-y-0.5 p-2 lg:p-3 pt-4 overflow-y-auto">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             end={item.end}
+            title={item.label}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150",
+                "flex items-center justify-center lg:justify-start gap-3 rounded-xl px-0 lg:px-3 py-2.5 text-sm font-medium transition-all duration-150",
                 isActive
                   ? "bg-yellow text-green-dark font-semibold"
                   : "text-cream/60 hover:bg-yellow/10 hover:text-cream"
@@ -49,26 +50,26 @@ export function AdminSidebar() {
             }
           >
             <item.icon className="h-4 w-4 shrink-0" />
-            {item.label}
+            <span className="hidden lg:inline">{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
       {/* User */}
-      <div className="border-t border-yellow/10 p-3">
-        <div className="flex items-center gap-3 rounded-xl p-2">
+      <div className="border-t border-yellow/10 p-2 lg:p-3">
+        <div className="flex items-center justify-center lg:justify-start gap-3 rounded-xl p-2">
           {user?.avatar ? (
-            <img src={user.avatar} alt={user.name} className="h-8 w-8 rounded-full object-cover ring-2 ring-yellow/20" />
+            <img src={user.avatar} alt={user.name} className="h-8 w-8 rounded-full object-cover ring-2 ring-yellow/20 shrink-0" />
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-yellow text-green-dark text-xs font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-yellow text-green-dark text-xs font-bold">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
           )}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 hidden lg:block">
             <p className="text-xs font-semibold text-cream truncate">{user?.name}</p>
             <p className="text-[10px] text-cream/40 truncate">{user?.role}</p>
           </div>
-          <button onClick={() => logout()} className="rounded-lg p-1.5 text-cream/40 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+          <button onClick={() => logout()} title="Logout" className="hidden lg:flex rounded-lg p-1.5 text-cream/40 hover:text-red-400 hover:bg-red-500/10 transition-colors">
             <LogOut className="h-3.5 w-3.5" />
           </button>
         </div>

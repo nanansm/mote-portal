@@ -5,6 +5,7 @@ import { FullPageSpinner } from "@/components/shared/LoadingSpinner";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { ClientSidebar } from "@/components/layout/ClientSidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { BottomNav } from "@/components/layout/BottomNav";
 
 import { LoginPage } from "@/pages/Login";
 import { AdminOverview } from "@/pages/admin/Overview";
@@ -22,10 +23,12 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-navy">
       <AdminSidebar />
-      <div className="flex flex-1 flex-col pl-60">
+      {/* md: offset by icon sidebar (64px), lg: offset by full sidebar (240px) */}
+      <div className="flex flex-1 flex-col md:pl-16 lg:pl-60">
         <TopBar />
-        <main className="flex-1 p-6 animate-fade-in">{children}</main>
+        <main className="flex-1 p-4 md:p-6 animate-fade-in">{children}</main>
       </div>
+      <BottomNav isAdmin />
     </div>
   );
 }
@@ -34,10 +37,12 @@ function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-navy">
       <ClientSidebar />
-      <div className="flex flex-1 flex-col pl-60">
+      {/* md: offset by icon sidebar (64px), lg: offset by full sidebar (240px) */}
+      <div className="flex flex-1 flex-col md:pl-16 lg:pl-60">
         <TopBar />
-        <main className="flex-1 p-6 animate-fade-in">{children}</main>
+        <main className="flex-1 p-4 md:p-6 animate-fade-in">{children}</main>
       </div>
+      <BottomNav isAdmin={false} />
     </div>
   );
 }

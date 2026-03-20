@@ -12,14 +12,24 @@ export interface JwtPayload {
   role: Role;
 }
 
-export interface DashboardSummary {
-  totalSpend: number;
-  totalImpressions: number;
-  totalReach: number;
-  totalClicks: number;
-  totalConversions: number;
-  overallROAS: number;
-  totalEngagements: number;
+export interface DashboardMetrics {
+  realOmset: number;
+  marketingSpent: number;
+  marketingCostPercent: number;
+  contentImpression: number;
+  audienceReach: number;
+  postInteraction: number;
+  engagementRate: number;
+  audienceFollow: number;
+  clickLink: number;
+  ctr: number;
+  whatsappLeads: number;
+}
+
+export interface DashboardPeriod {
+  startDate: string;
+  endDate: string;
+  label: string;
 }
 
 export interface DailySpend {
@@ -30,6 +40,7 @@ export interface DailySpend {
 export interface PlatformMetric {
   platform: string;
   impressions?: number;
+  reach?: number;
   budget?: number;
 }
 
@@ -54,11 +65,24 @@ export interface KolSummary {
 }
 
 export interface DashboardData {
-  summary: DashboardSummary;
-  dailySpend: DailySpend[];
-  impressionsByPlatform: PlatformMetric[];
-  budgetByPlatform: PlatformMetric[];
+  period: DashboardPeriod;
+  metrics: DashboardMetrics;
+  charts: {
+    dailySpend: DailySpend[];
+    impressionsByPlatform: PlatformMetric[];
+    reachByPlatform: PlatformMetric[];
+  };
   campaigns: CampaignSummary[];
   kolActivations: KolSummary[];
-  whatsappLeads: number;
+}
+
+// Legacy - kept for backwards compatibility during transition
+export interface DashboardSummary {
+  totalSpend: number;
+  totalImpressions: number;
+  totalReach: number;
+  totalClicks: number;
+  totalConversions: number;
+  overallROAS: number;
+  totalEngagements: number;
 }

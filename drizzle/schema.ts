@@ -9,6 +9,7 @@ import {
   decimal,
   json,
   mysqlEnum,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 import { relations } from "drizzle-orm";
 
@@ -73,6 +74,7 @@ export const campaignMetrics = mysqlTable("campaign_metrics", {
   clicks: int("clicks").default(0),
   engagements: int("engagements").default(0),
   conversions: int("conversions").default(0),
+  followers: int("followers").default(0),
   spend: decimal("spend", { precision: 15, scale: 2 }).default("0"),
   revenue: decimal("revenue", { precision: 15, scale: 2 }).default("0"),
   ctr: decimal("ctr", { precision: 10, scale: 4 }).default("0"),
@@ -135,10 +137,32 @@ export const googleSheetConfigs = mysqlTable("google_sheet_configs", {
   sheetUrl: varchar("sheet_url", { length: 500 }).notNull(),
   sheetName: varchar("sheet_name", { length: 255 }),
   lastSyncedAt: timestamp("last_synced_at"),
+  tiktokSyncedAt: timestamp("tiktok_synced_at"),
+  omsetSyncedAt: timestamp("omset_synced_at"),
+  kolSyncedAt: timestamp("kol_synced_at"),
+  whatsappSyncedAt: timestamp("whatsapp_synced_at"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
+
+// Stores daily omset (revenue) and whatsapp lead data synced from Google Sheets
+export const clientDailyData = mysqlTable(
+  "client_daily_data",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    clientId: varchar("client_id", { length: 36 }).notNull().references(() => clients.id),
+    date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+    realOmset: decimal("real_omset", { precision: 15, scale: 2 }).default("0"),
+    whatsappLeads: int("whatsapp_leads").default(0),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    uniqClientDate: uniqueIndex("client_daily_data_client_date_idx").on(table.clientId, table.date),
+  })
+);
 
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -152,6 +176,7 @@ export const clientsRelations = relations(clients, ({ one, many }) => ({
   reports: many(reports),
   kolActivations: many(kolActivations),
   googleSheetConfigs: many(googleSheetConfigs),
+  dailyData: many(clientDailyData),
 }));
 
 export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
@@ -172,4 +197,8 @@ export const reportsRelations = relations(reports, ({ one }) => ({
 export const kolActivationsRelations = relations(kolActivations, ({ one }) => ({
   client: one(clients, { fields: [kolActivations.clientId], references: [clients.id] }),
   campaign: one(campaigns, { fields: [kolActivations.campaignId], references: [campaigns.id] }),
+}));
+
+export const clientDailyDataRelations = relations(clientDailyData, ({ one }) => ({
+  client: one(clients, { fields: [clientDailyData.clientId], references: [clients.id] }),
 }));
