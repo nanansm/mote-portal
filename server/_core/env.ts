@@ -16,5 +16,6 @@ export const ENV = {
   awsBucketName: process.env.AWS_BUCKET_NAME || "",
   awsRegion: process.env.AWS_REGION || "ap-southeast-1",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
+  sheetsApiKey: process.env.GOOGLE_SHEETS_API_KEY || "",
   isProduction: process.env.NODE_ENV === "production",
 };
