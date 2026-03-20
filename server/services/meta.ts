@@ -217,8 +217,8 @@ export async function syncInstagram(clientId: string): Promise<void> {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const since = thirtyDaysAgo.toISOString().split("T")[0];
 
-  // Fetch account-level insights (impressions, reach, profile_views, follower_count)
-  const insightsUrl = `https://graph.facebook.com/v18.0/${igAccountId}/insights?metric=impressions,reach,profile_views&period=day&since=${since}&until=${today}&access_token=${accessToken}`;
+  // Fetch account-level insights (impressions, reach, follows_and_unfollows)
+  const insightsUrl = `https://graph.facebook.com/v18.0/${igAccountId}/insights?metric=impressions,reach,follows_and_unfollows&period=day&since=${since}&until=${today}&access_token=${accessToken}`;
   const insightsResp = await fetch(insightsUrl);
   if (!insightsResp.ok) {
     throw new Error(`Instagram Insights API error: ${await insightsResp.text()}`);
@@ -226,14 +226,16 @@ export async function syncInstagram(clientId: string): Promise<void> {
   const insightsData = (await insightsResp.json()) as { data: any[] };
 
   // Organize insights by date
-  const byDate: Record<string, { impressions: number; reach: number }> = {};
+  const byDate: Record<string, { impressions: number; reach: number; followers: number }> = {};
   for (const metric of insightsData.data || []) {
     const metricName: string = metric.name;
     for (const point of metric.values || []) {
       const dateStr = String(point.end_time).split("T")[0];
-      if (!byDate[dateStr]) byDate[dateStr] = { impressions: 0, reach: 0 };
+      if (!byDate[dateStr]) byDate[dateStr] = { impressions: 0, reach: 0, followers: 0 };
       if (metricName === "impressions") byDate[dateStr].impressions = point.value || 0;
       if (metricName === "reach") byDate[dateStr].reach = point.value || 0;
+      // follows_and_unfollows: positive = net new followers, use 0 if negative (unfollows > follows)
+      if (metricName === "follows_and_unfollows") byDate[dateStr].followers = Math.max(0, point.value || 0);
     }
   }
 
@@ -254,17 +256,41 @@ export async function syncInstagram(clientId: string): Promise<void> {
     }
   }
 
-  // Insert daily metrics
+  // Upsert daily metrics (Bug 5 fix: check before insert)
   for (const [dateStr, vals] of Object.entries(byDate)) {
-    const metricId = nanoid();
-    await db.insert(schema.campaignMetrics).values({
-      id: metricId,
-      campaignId,
-      date: dateStr,
-      impressions: vals.impressions,
-      reach: vals.reach,
-      engagements: engagementByDate[dateStr] || 0,
-      source: "api",
-    });
+    const existingMetric = await db
+      .select({ id: schema.campaignMetrics.id })
+      .from(schema.campaignMetrics)
+      .where(
+        and(
+          eq(schema.campaignMetrics.campaignId, campaignId),
+          eq(schema.campaignMetrics.date, dateStr as unknown as Date)
+        )
+      )
+      .limit(1);
+
+    if (existingMetric[0]) {
+      await db
+        .update(schema.campaignMetrics)
+        .set({
+          impressions: vals.impressions,
+          reach: vals.reach,
+          followers: vals.followers,
+          engagements: engagementByDate[dateStr] || 0,
+          source: "api",
+        })
+        .where(eq(schema.campaignMetrics.id, existingMetric[0].id));
+    } else {
+      await db.insert(schema.campaignMetrics).values({
+        id: nanoid(),
+        campaignId,
+        date: dateStr,
+        impressions: vals.impressions,
+        reach: vals.reach,
+        followers: vals.followers,
+        engagements: engagementByDate[dateStr] || 0,
+        source: "api",
+      });
+    }
   }
 }

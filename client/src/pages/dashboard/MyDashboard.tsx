@@ -19,7 +19,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
-const COLORS = ['#F4D23A', '#BDF24A', '#69C9D0', '#A855F7', '#F97316', '#06B6D4', '#EC4899'];
+const PLATFORM_COLORS: Record<string, string> = {
+  meta: '#1877F2',
+  organic_instagram: '#E1306C',
+  organic_tiktok: '#010101',
+  kol: '#BDF24A',
+  google: '#34A853',
+  tiktok: '#010101',
+  manual: '#F4D23A',
+};
+const FALLBACK_COLORS = ['#F4D23A', '#BDF24A', '#69C9D0', '#A855F7', '#F97316'];
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -43,10 +52,9 @@ function getDateRange(type: FilterType, customStart?: string, customEnd?: string
   const now = new Date();
   if (type === "this_month") {
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return {
       startDate: first.toISOString().split("T")[0],
-      endDate: last.toISOString().split("T")[0],
+      endDate: now.toISOString().split("T")[0],
       label: first.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
     };
   }
@@ -270,7 +278,9 @@ export function MyDashboard() {
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie data={pieData} cx="50%" cy="45%" innerRadius={50} outerRadius={75} dataKey="impressions" nameKey="platform" paddingAngle={2}>
-                    {pieData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    {pieData.map((entry: any, i: number) => (
+                      <Cell key={i} fill={PLATFORM_COLORS[entry.platform] || FALLBACK_COLORS[i % FALLBACK_COLORS.length]} />
+                    ))}
                   </Pie>
                   <Tooltip
                     content={({ active, payload }) => {

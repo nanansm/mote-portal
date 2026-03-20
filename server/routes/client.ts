@@ -26,14 +26,13 @@ function parseDateRange(query: Record<string, any>): { startDate: string; endDat
     const endLabel = new Date(end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     return { startDate: start, endDate: end, label: `${startLabel} – ${endLabel}` };
   }
-  // Default: current month
+  // Default: current month start → today
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const label = firstDay.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return {
     startDate: firstDay.toISOString().split("T")[0],
-    endDate: lastDay.toISOString().split("T")[0],
+    endDate: now.toISOString().split("T")[0],
     label,
   };
 }
@@ -102,7 +101,7 @@ router.get("/dashboard", async (req, res) => {
         totalClicks[campaign.platform] = (totalClicks[campaign.platform] || 0) + clicks;
         totalFollowers[campaign.platform] = (totalFollowers[campaign.platform] || 0) + followers;
 
-        const dateStr = String(m.date).split("T")[0];
+        const dateStr = m.date instanceof Date ? m.date.toISOString().split("T")[0] : String(m.date).split("T")[0];
         dailySpendMap[dateStr] = (dailySpendMap[dateStr] || 0) + spend;
 
         if (campaign.platform === "kol") kolSpend.push(spend);

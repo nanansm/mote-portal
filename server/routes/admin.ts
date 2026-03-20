@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { requireAdmin } from "../_core/middleware";
 import { getDb, schema } from "../_core/db";
@@ -158,7 +158,7 @@ router.get("/clients/:id/dashboard", async (req, res) => {
         totalConversions += m.conversions || 0;
         totalRevenue += parseFloat(String(m.revenue || 0));
         totalEngagements += m.engagements || 0;
-        const dateStr = String(m.date).split("T")[0];
+        const dateStr = m.date instanceof Date ? m.date.toISOString().split("T")[0] : String(m.date).split("T")[0];
         dailySpendMap[dateStr] = (dailySpendMap[dateStr] || 0) + spend;
       }
     }
@@ -624,6 +624,37 @@ router.get("/users", async (_req, res) => {
       .from(schema.users)
       .orderBy(desc(schema.users.createdAt));
     res.json({ data: users });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Cleanup Duplicate Metrics ─────────────────────────────────────────────────
+
+router.get("/cleanup-duplicates", async (_req, res) => {
+  try {
+    const db = getDb();
+
+    // Count before
+    const before = await db.execute(sql`SELECT COUNT(*) as total FROM campaign_metrics`);
+    const totalBefore = Number((before[0] as any[])[0]?.total || 0);
+
+    // Delete duplicates: keep only MAX(id) per (campaign_id, date)
+    await db.execute(sql`
+      DELETE cm FROM campaign_metrics cm
+      WHERE cm.id NOT IN (
+        SELECT id FROM (
+          SELECT MAX(id) AS id FROM campaign_metrics GROUP BY campaign_id, date
+        ) AS keep_ids
+      )
+    `);
+
+    const after = await db.execute(sql`SELECT COUNT(*) as total FROM campaign_metrics`);
+    const totalAfter = Number((after[0] as any[])[0]?.total || 0);
+    const deleted = totalBefore - totalAfter;
+
+    res.json({ deleted, totalBefore, totalAfter, message: `Cleaned up ${deleted} duplicate rows` });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
